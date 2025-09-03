@@ -423,7 +423,7 @@ export default function App() {
         return () => {
             socketRef.current?.disconnect();
         };
-    }, []);
+    }, [initializeSocket, handleJoin]);
 
     const newPC = (isHost) => {
         pcRef.current = new RTCPeerConnection({ iceServers: ICE_SERVERS });
