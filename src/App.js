@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { io } from "socket.io-client";
 
 // --- Configuration ---
-const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || "https://e81f3d7a2492.ngrok-free.app";
+const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || "http:localhost:5000";
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 const CHUNK_SIZE = 64 * 1024; // 64 KB
 const HIGH_WATER_MARK = 16 * 1024 * 1024; // 16 MB buffer threshold
@@ -423,7 +423,7 @@ export default function App() {
         return () => {
             socketRef.current?.disconnect();
         };
-    }, []);
+    }, [initializeSocket, handleJoin]);
 
     const newPC = (isHost) => {
         pcRef.current = new RTCPeerConnection({ iceServers: ICE_SERVERS });
