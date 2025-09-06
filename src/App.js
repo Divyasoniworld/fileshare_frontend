@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { io } from "socket.io-client";
 // Lucide icons
-import { X, Copy, Upload, File, Image, Music, Video, FileText, Download } from 'lucide-react';
+import { X, Copy, Upload, File, Image, Music, Video, FileText, Download, ThumbsDown } from 'lucide-react';
 
 // --- Configuration ---
 const SOCKET_URL = process.env.REACT_APP_BASE_URL
@@ -200,19 +200,24 @@ const Header = () => (
             <span className="text-xl sm:text-2xl font-bold text-blue-200">X</span>
             {/* Andcoder Logo and Name */}
             <div className="flex items-center space-x-2">
-                {/* <img src='andcoder-logo.svg' alt='Andcoder Icon' className="h-7 sm:h-8 flex-shrink-0" /> Adjust height as needed */}
+                {/* <img src='/andcoder-logo.svg' alt='Andcoder Icon' className="h-7 sm:h-8 flex-shrink-0" /> */}
                 <span className="font-bold text-xl sm:text-2xl leading-none">ANDCODER</span>
             </div>
         </div>
-
-        {/* "A Venture of Hyperlink InfoSystem" equivalent */}
         <span className="text-sm sm:text-base font-light opacity-80 mt-1">
             A Service from <span className="font-medium">ANDCODER</span>
         </span>
     </header>
 );
 
-const FileUploadView = ({ onFilesSelected, setView }) => {
+const SubHeader = () => (
+    <h2 className="text-white text-center text-xl sm:text-xl md:text-2xl font-semibold tracking-wide mt-4 md:mt-6">
+        Direct file transfer. Simple and secure.
+    </h2>
+);
+
+// This component now conditionally renders based on socket connection status
+const FileUploadView = ({ onFilesSelected, setView, isReady }) => {
     const [isDragging, setIsDragging] = React.useState(false);
     const fileInputRef = React.useRef(null);
 
@@ -236,29 +241,48 @@ const FileUploadView = ({ onFilesSelected, setView }) => {
 
     return (
         <div className="text-center w-full px-4">
-            <div
-                className={`mt-8 sm:mt-12 mx-auto w-full max-w-xl p-6 sm:p-8 bg-white rounded-2xl shadow-2xl backdrop-blur-sm cursor-pointer border-2 border-dashed transition-all duration-300 ${isDragging ? 'border-blue-500 scale-105' : 'border-black/50'}`}
-                onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}
-            >
-                <div className="flex flex-col items-center justify-center space-y-4">
-                    <Upload className="h-8 w-8 text-blue-500 mx-auto" />
-                    <p className="text-lg font-medium text-gray-700">Drag and Drop files to upload</p>
-                    <p className="text-gray-500">or</p>
-                    <button
-                        onClick={openFileDialog}
-                        className="bg-blue-500 text-white font-medium py-2 px-6 rounded-full hover:bg-blue-600 transition-colors"
-                    >
-                        Browse
-                    </button>
-                    <p className="text-xs text-gray-400">Supported formats: XLS, XLSX</p>
+
+            <>
+                <div
+                    className={`mt-8 sm:mt-12 mx-auto w-full max-w-xl p-6 sm:p-8 bg-white rounded-2xl shadow-2xl backdrop-blur-sm cursor-pointer border-2 border-dashed transition-all duration-300 ${isDragging ? 'border-blue-500 scale-105' : 'border-black/50'}`}
+                    onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}
+                >
+
+                    {
+                        isReady ? (
+
+                            <>
+                                <div className="flex flex-col items-center justify-center space-y-4">
+                                    <Upload className="h-8 w-8 text-blue-500 mx-auto" />
+                                    <p className="text-lg font-medium text-gray-700">Drag and Drop files to upload</p>
+                                    <p className="text-gray-500">or</p>
+                                    <button
+                                        onClick={openFileDialog}
+                                        className="bg-blue-500 text-white font-medium py-2 px-6 rounded-full hover:bg-blue-600 transition-colors"
+                                    >
+                                        Browse
+                                    </button>
+                                    {/* <p className="text-xs text-gray-400">Supported formats: XLS, XLSX</p> */}
+                                </div>
+                                <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
+                            </>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center space-y-4">
+                                <p className="text-lg font-medium text-gray-700 animate-pulse">
+                                    Please wait until I'm ready to transfer your files...
+                                </p>
+                            </div>
+                        )
+                    }
+
                 </div>
-                <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
-            </div>
-            <p className="mt-8">
-                <button onClick={() => setView('receiving')} className="text-white opacity-80 hover:opacity-100 underline">
-                    Or receive a file?
-                </button>
-            </p>
+                <p className="mt-8">
+                    <button onClick={() => setView('receiving')} className="text-white opacity-80 hover:opacity-100 underline">
+                        Or receive a file?
+                    </button>
+                </p>
+            </>
+
         </div>
     );
 };
@@ -405,11 +429,16 @@ const ReceiverView = ({ onJoin, status, isConnected, peerFiles, myFiles, onAddFi
                 <p className="text-gray-600 mt-2">Enter the 4-digit code from the sender.</p>
                 <div className="mt-6 flex items-center space-x-2">
                     <input
-                        type="text"
+                        type="number"
                         maxLength="4"
                         value={inputCode}
-                        onChange={(e) => setInputCode(e.target.value.trim())}
-                        placeholder="1234"
+                        onChange={(e) => {
+                            const value = e.target.value;
+                            if (value.length <= 4) {
+                                setInputCode(value);
+                            }
+                        }}
+                        placeholder="Enter your code"
                         className="w-full text-center text-xl font-mono p-2 border-2 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition"
                     />
                     <button
@@ -523,6 +552,7 @@ export default function App() {
     const [isHost, setIsHost] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState(0);
     const [peerFileCount, setPeerFileCount] = useState(0);
+    const [isSocketReady, setIsSocketReady] = useState(false); // New state for socket connection status
 
     // File Management State
     const [myFiles, setMyFiles] = useState([]);
@@ -566,7 +596,15 @@ export default function App() {
 
         socketRef.current = socket;
 
-        socket.on("connect", () => console.log("Connected:", socket.id));
+        socket.on("connect", () => {
+            console.log("Connected:", socket.id);
+            setIsSocketReady(true);
+        });
+
+        socket.on("disconnect", () => {
+            console.log("Disconnected:", socket.id);
+            setIsSocketReady(false);
+        });
 
         socket.on("room-created", (roomId) => {
             roomRef.current = roomId;
@@ -905,7 +943,7 @@ export default function App() {
                 return <ReceiverView {...props} onJoin={handleJoin} onDownloadAll={handleDownloadAll} isDownloading={isDownloading} />;
             case 'upload':
             default:
-                return <FileUploadView onFilesSelected={handleFilesSelected} setView={setView} />;
+                return <FileUploadView onFilesSelected={handleFilesSelected} setView={setView} isReady={isSocketReady} />;
         }
     };
 
@@ -916,6 +954,7 @@ export default function App() {
             <div className="relative z-10 w-full flex flex-col items-center justify-center flex-grow">
                 {/* Header is now always visible */}
                 <Header />
+                {view === 'upload' && <SubHeader />} {/* SubHeader is now only visible on the upload view */}
                 <main className="flex-grow flex items-center justify-center w-full max-w-7xl">
                     {renderView()}
                 </main>
