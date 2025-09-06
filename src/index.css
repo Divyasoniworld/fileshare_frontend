@@ -10,3 +10,18 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+
+@keyframes blink-border {
+  0%, 100% {
+    border-color: rgba(74, 121, 238, 0.5); /* Semi-transparent blue */
+  }
+  50% {
+    border-color: #4A79EE; /* Fully opaque blue */
+  }
+}
+
+@keyframes blink {
+  0%, 100% { border-color: rgba(74, 121, 238, 0.5); }
+  50% { border-color: #4A79EE; }
+}

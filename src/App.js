@@ -1,23 +1,168 @@
-//frontend
 import React, { useState, useRef, useEffect } from 'react';
 import { io } from "socket.io-client";
+// Lucide icons
+import { X, Copy, Upload, File, Image, Music, Video, FileText, Download } from 'lucide-react';
 
 // --- Configuration ---
-const SOCKET_URL = "https://fileshare-backend-ovft.onrender.com"
-const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
-const CHUNK_SIZE = 64 * 1024; // 64 KB
-const HIGH_WATER_MARK = 16 * 1024 * 1024; // 16 MB buffer threshold
+const SOCKET_URL = process.env.REACT_APP_BASE_URL
+console.log("SOCKET_URL", SOCKET_URL)
+const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" },
+{
+    urls: "turn:openrelay.metered.ca:80",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+},];
+
+const CHUNK_SIZE = 256 * 1024; // 256 KB
+const HIGH_WATER_MARK = 64 * 1024 * 1024; // 64 MB
 
 // =================================================================
-// =================== UI COMPONENTS (UNCHANGED) ===================
+// =================== UI COMPONENTS (UPDATED) =====================
 // =================================================================
+
+// --- New `useModal` hook for managing modal state cleanly ---
+const useModal = () => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [modalContent, setModalContent] = useState(null);
+
+    const openModal = (content) => {
+        setModalContent(content);
+        setIsOpen(true);
+    };
+
+    const closeModal = () => {
+        setIsOpen(false);
+        setModalContent(null);
+    };
+
+    return { isOpen, modalContent, openModal, closeModal };
+};
+
+// --- New `FilePreviewModal` component ---
+const FilePreviewModal = ({ file, isOpen, onClose }) => {
+    if (!isOpen || !file) return null;
+
+    const fileType = file.type;
+
+    const renderPreview = () => {
+        // Handle local files (File object)
+        const fileBlob = file.file;
+        const localUrl = fileBlob ? URL.createObjectURL(fileBlob) : null;
+        const isLocal = !!fileBlob;
+
+        // Handle remote files (URL from downloaded blob)
+        const remoteUrl = file.downloadedUrl;
+        const url = isLocal ? localUrl : remoteUrl;
+
+        // Determine if a preview is possible
+        if (fileType.startsWith('image/')) {
+            return <img src={url} alt={file.name} className="max-h-96 max-w-full object-contain" />;
+        } else if (fileType.startsWith('video/')) {
+            return <video controls src={url} className="max-h-96 max-w-full" />;
+        } else if (fileType.startsWith('audio/')) {
+            return <audio controls src={url} className="w-full" />;
+        } else if (fileType === 'application/pdf') {
+            return <p className="text-gray-500">PDF preview is not supported. Please download the file to view it.</p>;
+        } else {
+            return <p className="text-gray-500">No preview available for this file type.</p>;
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl p-6 relative w-full max-w-xl">
+                <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors z-10">
+                    <X />
+                </button>
+                <h3 className="text-lg font-semibold mb-4 text-gray-800 break-words">{file?.name}</h3>
+                <div className="flex justify-center items-center p-4 bg-gray-100 rounded-lg">
+                    {renderPreview()}
+                </div>
+                <p className="mt-4 text-sm text-gray-500">
+                    Size: {(file?.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+            </div>
+        </div>
+    );
+};
+
+// --- Updated `FileList` component with thumbnails and click handler ---
+const FileList = ({ title, files, showDownloadButton, onDownload, showDeleteButton, onDelete, onFileClick }) => {
+    const getFileIcon = (file) => {
+        const fileType = file?.type;
+        if (fileType?.startsWith('image/')) {
+            return <Image className="h-6 w-6 text-blue-400" />;
+        }
+        if (fileType?.startsWith('video/')) {
+            return <Video className="h-6 w-6 text-blue-400" />;
+        }
+        if (fileType?.startsWith('audio/')) {
+            return <Music className="h-6 w-6 text-purple-400" />;
+        }
+        if (fileType === 'application/pdf') {
+            return <FileText className="h-6 w-6 text-red-400" />;
+        }
+        return <File className="h-6 w-6 text-gray-400" />;
+    };
+
+    return (
+        <div className="mt-4 text-left">
+            <h3 className="font-semibold text-gray-700">{title}</h3>
+            {files.length === 0 ? (
+                <p className="mt-1 text-sm text-gray-500">No files yet.</p>
+            ) : (
+                <div className="mt-2 space-y-2 max-h-32 sm:max-h-40 overflow-y-auto pr-2">
+                    {files.map(file => {
+                        // The crucial fix: Check if 'file' is null or its 'name' property is missing
+                        if (!file || !file.name) {
+                            return null; // Skip rendering this item
+                        }
+
+                        const fileSize = (file.size / 1024 / 1024).toFixed(2); // size in MB
+                        return (
+                            <div key={file.name} className="flex items-center justify-between p-2 bg-gray-50 rounded-md shadow-sm">
+                                <div className="flex-1 flex items-center space-x-3 cursor-pointer" onClick={() => onFileClick(file)}>
+                                    <div className="flex-shrink-0">{getFileIcon(file)}</div>
+                                    <div>
+                                        <p className="text-sm font-medium text-gray-800 truncate max-w-[150px] sm:max-w-[200px]">{file.name}</p>
+                                        <p className="text-xs text-gray-500">{fileSize} MB</p>
+                                        {file.progress !== undefined && file.progress < 100 && (
+                                            <div className="mt-2 w-full bg-gray-200 rounded-full h-1">
+                                                <div
+                                                    className="bg-blue-500 h-1 rounded-full"
+                                                    style={{ width: `${file.progress}%` }}
+                                                ></div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex space-x-2">
+                                    {showDownloadButton && (
+                                        <button onClick={(e) => { e.stopPropagation(); onDownload(file.name); }} className="text-gray-400 hover:text-blue-600">
+                                            <Download className="h-5 w-5" />
+                                        </button>
+                                    )}
+                                    {showDeleteButton && (
+                                        <button onClick={(e) => { e.stopPropagation(); onDelete(file.name); }} className="text-gray-400 hover:text-red-600">
+                                            <X className="h-5 w-5" />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+};
 
 const Toaster = ({ message, onClear }) => {
     useEffect(() => {
         if (message) {
             const timer = setTimeout(() => {
                 onClear();
-            }, 3000); // Clear message after 3 seconds
+            }, 3000);
             return () => clearTimeout(timer);
         }
     }, [message, onClear]);
@@ -31,29 +176,6 @@ const Toaster = ({ message, onClear }) => {
     );
 };
 
-const FileList = ({ title, files }) => (
-    <div className="mt-4 text-left">
-        <h3 className="font-semibold text-gray-700">{title}</h3>
-        {files.length === 0 ? (
-            <p className="mt-1 text-sm text-gray-500">No files yet.</p>
-        ) : (
-            <div className="mt-2 space-y-2 max-h-32 sm:max-h-40 overflow-y-auto pr-2">
-                {files.map(file => {
-                    const fileSize = (file.size / 1024 / 1024).toFixed(2); // size in MB
-                    return (
-                        <div key={file.name} className="flex items-center justify-between p-2 bg-gray-50 rounded-md shadow-sm">
-                            <div>
-                                <p className="text-sm font-medium text-gray-800 truncate max-w-[150px] sm:max-w-[200px]">{file.name}</p>
-                                <p className="text-xs text-gray-500">{fileSize} MB</p>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        )}
-    </div>
-);
-
 
 const WavyBackground = () => (
     <div className="absolute inset-0 overflow-hidden bg-[#4A79EE]">
@@ -65,18 +187,28 @@ const WavyBackground = () => (
     </div>
 );
 
-const LogoIcon = () => (<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="18" cy="18" r="18" fill="white" /><path d="M18 9C13.0294 9 9 13.0294 9 18C9 22.9706 13.0294 27 18 27C22.9706 27 27 22.9706 27 18C27 13.0294 22.9706 9 18 9ZM18 21C16.3431 21 15 19.6569 15 18C15 16.3431 16.3431 15 18 15C19.6569 15 21 16.3431 21 18C21 19.6569 19.6569 21 18 21Z" fill="#4A79EE" /></svg>);
-const UploadIcon = () => (<svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M12 4v16m8-8H4"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M15.5 8.5a3.5 3.5 0 11-7 0 3.5 3.5 0 017 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M12 12.5a.5.5 0 100-1 .5.5 0 000 1z"></path></svg>);
-const SuccessIcon = () => (<svg className="w-16 h-16 text-green-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>);
-const CopyIcon = () => (<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>);
-const CancelIcon = () => (<svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>);
 
 const Header = () => (
-    <header className="flex justify-between items-center p-4 md:p-6 w-full max-w-7xl mx-auto text-white">
-        <div className="flex items-center space-x-3">
-            <LogoIcon />
-            <span className="font-bold text-xl sm:text-2xl">Duplin</span>
+    <header className="flex flex-col items-center p-4 md:p-6 w-full max-w-7xl mx-auto text-white">
+        <div className="flex items-center space-x-2 sm:space-x-4 mb-2">
+            {/* Share Fiber Logo and Name */}
+            <div className="flex items-center space-x-2">
+                <img src='/logo.svg' alt='Share Fiber Icon' width={35} height={35} className="flex-shrink-0" />
+                <span className="font-bold text-xl sm:text-2xl leading-none">Share Fiber</span>
+            </div>
+            {/* The 'X' separator */}
+            <span className="text-xl sm:text-2xl font-bold text-blue-200">X</span>
+            {/* Andcoder Logo and Name */}
+            <div className="flex items-center space-x-2">
+                {/* <img src='andcoder-logo.svg' alt='Andcoder Icon' className="h-7 sm:h-8 flex-shrink-0" /> Adjust height as needed */}
+                <span className="font-bold text-xl sm:text-2xl leading-none">ANDCODER</span>
+            </div>
         </div>
+
+        {/* "A Venture of Hyperlink InfoSystem" equivalent */}
+        <span className="text-sm sm:text-base font-light opacity-80 mt-1">
+            A Service from <span className="font-medium">ANDCODER</span>
+        </span>
     </header>
 );
 
@@ -103,17 +235,22 @@ const FileUploadView = ({ onFilesSelected, setView }) => {
     const openFileDialog = () => fileInputRef.current?.click();
 
     return (
-        <div className="text-center text-white w-full px-4">
-            <h1 className="text-4xl md:text-6xl font-bold mb-4">Send super big files</h1>
-            <p className="text-base md:text-xl opacity-80">Simple. Fast. Beautiful.</p>
+        <div className="text-center w-full px-4">
             <div
-                className={`mt-8 sm:mt-12 mx-auto w-full max-w-2xl p-6 sm:p-8 bg-white/95 rounded-2xl shadow-2xl backdrop-blur-sm cursor-pointer border-4 border-dashed transition-all duration-300 ${isDragging ? 'border-blue-400 scale-105' : 'border-white/50'}`}
-                onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop} onClick={openFileDialog}
+                className={`mt-8 sm:mt-12 mx-auto w-full max-w-xl p-6 sm:p-8 bg-white rounded-2xl shadow-2xl backdrop-blur-sm cursor-pointer border-2 border-dashed transition-all duration-300 ${isDragging ? 'border-blue-500 scale-105' : 'border-black/50'}`}
+                onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}
             >
-                <div className="flex flex-col items-center justify-center space-y-4 h-48 sm:h-56">
-                    <UploadIcon />
-                    <p className="text-xl sm:text-2xl font-semibold text-gray-700">Drop your file here to share</p>
-                    <p className="text-gray-500">or click to browse</p>
+                <div className="flex flex-col items-center justify-center space-y-4">
+                    <Upload className="h-8 w-8 text-blue-500 mx-auto" />
+                    <p className="text-lg font-medium text-gray-700">Drag and Drop files to upload</p>
+                    <p className="text-gray-500">or</p>
+                    <button
+                        onClick={openFileDialog}
+                        className="bg-blue-500 text-white font-medium py-2 px-6 rounded-full hover:bg-blue-600 transition-colors"
+                    >
+                        Browse
+                    </button>
+                    <p className="text-xs text-gray-400">Supported formats: XLS, XLSX</p>
                 </div>
                 <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
             </div>
@@ -126,9 +263,36 @@ const FileUploadView = ({ onFilesSelected, setView }) => {
     );
 };
 
-const SharingView = ({ myFiles, peerFiles, shareLink, downloadCode, status, isConnected, onAddFiles, onDownloadAll, isDownloading, onCancel, downloadProgress }) => {
+// --- New SharingStatusCard Component ---
+const SharingStatusCard = ({ shareLink, downloadCode, status, onCopy, copied, onCancel }) => (
+    <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full relative h-full flex flex-col items-center justify-center text-center">
+        <button onClick={onCancel} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors z-10">
+            <X />
+        </button>
+        <h3 className="text-gray-500 text-sm font-medium">Status:</h3>
+        <p className="text-md sm:text-lg font-semibold text-gray-800">{status}</p>
+
+        {downloadCode && (
+            <>
+                <p className="text-5xl sm:text-6xl font-extrabold tracking-widest text-gray-800 mt-4 sm:mt-6 mb-4">{downloadCode}</p>
+                <div className="bg-gray-100 rounded-lg p-3 flex items-center justify-between mt-6 w-full">
+                    <span className="text-blue-600 font-mono text-xs truncate pr-2">{shareLink}</span>
+                    <button onClick={onCopy} className="bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition-colors flex items-center space-x-2">
+                        <Copy className="h-5 w-5" />
+                        <span>{copied ? 'Copied!' : 'Copy'}</span>
+                    </button>
+                </div>
+            </>
+        )}
+    </div>
+);
+
+
+// --- Refactored SharingView Component ---
+const SharingView = ({ myFiles, peerFiles, shareLink, downloadCode, status, onAddFiles, onDownloadAll, isDownloading, onCancel, downloadProgress, onFileDelete, onFileDownload, onFileClick, peerFileCount }) => {
     const [copied, setCopied] = React.useState(false);
     const addFilesInputRef = useRef(null);
+    const [activeTab, setActiveTab] = useState('upload'); // State for the tabs
 
     const copyToClipboard = () => {
         navigator.clipboard.writeText(shareLink).then(() => {
@@ -144,68 +308,86 @@ const SharingView = ({ myFiles, peerFiles, shareLink, downloadCode, status, isCo
     };
 
     return (
-        <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 w-full max-w-md text-center relative">
-            <button onClick={onCancel} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors z-10">
-                <CancelIcon />
-            </button>
-            <SuccessIcon />
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mt-4">Ready to Share!</h2>
-            <p className="text-gray-600 mt-2">Share the link or code below.</p>
-
-            <div className="mt-6 bg-gray-100 rounded-lg p-3 flex items-center justify-between">
-                <span className="text-blue-600 font-mono text-sm truncate pr-2">{shareLink}</span>
-                <button onClick={copyToClipboard} className="bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition-colors">
-                    {copied ? 'Copied!' : <CopyIcon />}
-                </button>
-            </div>
-            <div className="mt-4">
-                <p className="text-gray-500">Or use this download code:</p>
-                <p className="text-3xl sm:text-4xl font-bold tracking-widest text-gray-800 mt-2">{downloadCode}</p>
-            </div>
-
-            <FileList title="Your Files" files={myFiles} />
-
-            {isConnected && (
-                <>
-                    <FileList title="Remote User's Files" files={peerFiles} />
-                    {peerFiles.length > 0 && (
-                        <button
-                            onClick={onDownloadAll}
-                            disabled={isDownloading}
-                            className={`mt-4 w-full font-bold py-3 rounded-lg transition-colors relative overflow-hidden ${isDownloading ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'
-                                }`}
-                        >
-                            {isDownloading ? (
-                                <>
-                                    <div
-                                        className="absolute top-0 left-0 h-full bg-blue-400 transition-all duration-150"
-                                        style={{ width: `${downloadProgress}%` }}
-                                    ></div>
-                                    <span className="relative z-10 text-white">Downloading... {downloadProgress}%</span>
-                                </>
-                            ) : (
-                                'Download All Files'
-                            )}
-                        </button>
-                    )}
-                    <button onClick={() => addFilesInputRef.current?.click()} className="mt-4 w-full bg-green-500 text-white font-bold py-3 rounded-lg hover:bg-green-600 transition-colors">
-                        Add & Share More Files
+        <div className="flex flex-col lg:flex-row space-y-6 lg:space-y-0 lg:space-x-6 w-full max-w-6xl mx-auto">
+            {/* Left Card: File List & Upload */}
+            <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full lg:w-3/5 text-center relative">
+                <div className="flex border-b border-gray-200 mb-6">
+                    <button onClick={() => setActiveTab('upload')} className={`flex-1 py-3 font-semibold transition-colors ${activeTab === 'upload' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>
+                        Upload
                     </button>
-                    <input type="file" multiple ref={addFilesInputRef} className="hidden" onChange={handleFileSelect} />
-                </>
-            )}
+                    <button
+                        onClick={() => setActiveTab('download')}
+                        className={`flex-1 py-3 font-semibold transition-colors relative flex items-center justify-center space-x-2 ${activeTab === 'download' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
+                    >
+                        <span>Download</span>
+                        {peerFileCount > 0 && (
+                            <span className="bg-red-500 text-white text-[10px] rounded-full px-2 py-0.5 font-bold">
+                                {peerFileCount}
+                            </span>
+                        )}
+                    </button>
+                </div>
+                {activeTab === 'upload' ? (
+                    <>
+                        <div onClick={() => addFilesInputRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center text-gray-400 cursor-pointer hover:border-blue-400 transition-colors duration-200">
+                            <Upload className="h-8 w-8 text-blue-500 mx-auto" />
+                            <p className="mt-2 text-sm">Drag & drop or click to choose files</p>
+                            <div className="text-xs text-gray-500 mt-2 flex justify-between">
+                                <span>Supported formats: XLS, XLSX</span>
+                                <span>Max: 25MB</span>
+                            </div>
+                        </div>
+                        <input type="file" multiple ref={addFilesInputRef} className="hidden" onChange={handleFileSelect} />
+                        <FileList title="Your Files" files={myFiles} showDeleteButton={true} onDelete={onFileDelete} onFileClick={onFileClick} />
+                    </>
+                ) : (
+                    <>
+                        <FileList title="Remote User's Files" files={peerFiles} showDownloadButton={true} onDownload={onFileDownload} onFileClick={onFileClick} />
+                        {peerFiles.length > 0 && (
+                            <button
+                                onClick={onDownloadAll}
+                                disabled={isDownloading}
+                                className={`mt-4 w-full font-bold py-3 rounded-lg transition-colors relative overflow-hidden ${isDownloading ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'
+                                    }`}
+                            >
+                                {isDownloading ? (
+                                    <>
+                                        <div
+                                            className="absolute top-0 left-0 h-full bg-blue-400 transition-all duration-150"
+                                            style={{ width: `${downloadProgress}%` }}
+                                        ></div>
+                                        <span className="relative z-10 text-white">Downloading... {downloadProgress}%</span>
+                                    </>
+                                ) : (
+                                    'Download All Files'
+                                )}
+                            </button>
+                        )}
+                    </>
+                )}
+            </div>
 
-            <div className="mt-4 p-3 bg-blue-50 rounded-lg text-blue-800 text-sm">
-                <strong>Status:</strong> {status}
+            {/* Right Card: Status & Code */}
+            <div className="w-full lg:w-2/5">
+                <SharingStatusCard
+                    shareLink={shareLink}
+                    downloadCode={downloadCode}
+                    status={status}
+                    onCopy={copyToClipboard}
+                    copied={copied}
+                    onCancel={onCancel}
+                />
             </div>
         </div>
     );
 };
 
 
-const ReceiverView = ({ onJoin, status, isConnected, peerFiles, myFiles, onAddFiles, onDownloadAll, isDownloading, onCancel, downloadProgress }) => {
+// --- Refactored ReceiverView Component ---
+const ReceiverView = ({ onJoin, status, isConnected, peerFiles, myFiles, onAddFiles, onDownloadAll, isDownloading, onCancel, downloadProgress, onFileDelete, onFileDownload, onFileClick, peerFileCount }) => {
     const [inputCode, setInputCode] = useState('');
     const addFilesInputRef = useRef(null);
+    const [activeTab, setActiveTab] = useState('download');
 
     const handleFileSelect = (e) => {
         if (e.target.files && e.target.files.length > 0) {
@@ -213,69 +395,113 @@ const ReceiverView = ({ onJoin, status, isConnected, peerFiles, myFiles, onAddFi
         }
     };
 
-    return (
-        <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 w-full max-w-md text-center relative">
-            {isConnected && (
+    if (!isConnected) {
+        return (
+            <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-md text-center relative">
                 <button onClick={onCancel} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors z-10">
-                    <CancelIcon />
+                    <X />
                 </button>
-            )}
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">Receive a File</h2>
-
-            {!isConnected ? (
-                <>
-                    <p className="text-gray-600 mt-2">Enter the 4-digit code from the sender.</p>
-                    <div className="mt-6 flex items-center space-x-2">
-                        <input
-                            type="text"
-                            maxLength="4"
-                            value={inputCode}
-                            onChange={(e) => setInputCode(e.target.value.trim())}
-                            placeholder="1234"
-                            className="w-full text-center text-2xl font-mono p-3 border-2 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition"
-                        />
-                        <button
-                            onClick={() => onJoin(inputCode)}
-                            className="bg-blue-500 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-600 transition-colors"
-                        >
-                            Receive
-                        </button>
-                    </div>
-                </>
-            ) : (
-                <>
-                    <p className="text-gray-600 mt-2">Connection successful!</p>
-                    <FileList title="Files to Download" files={peerFiles} />
-                    {peerFiles.length > 0 && (
-                        <button
-                            onClick={onDownloadAll}
-                            disabled={isDownloading}
-                            className={`mt-4 w-full font-bold py-3 rounded-lg transition-colors relative overflow-hidden ${isDownloading ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'
-                                }`}
-                        >
-                            {isDownloading ? (
-                                <>
-                                    <div
-                                        className="absolute top-0 left-0 h-full bg-blue-400 transition-all duration-150"
-                                        style={{ width: `${downloadProgress}%` }}
-                                    ></div>
-                                    <span className="relative z-10 text-white">Downloading... {downloadProgress}%</span>
-                                </>
-                            ) : (
-                                'Download All Files'
-                            )}
-                        </button>
-                    )}
-                    <FileList title="Your Files" files={myFiles} />
-                    <button onClick={() => addFilesInputRef.current?.click()} className="mt-4 w-full bg-green-500 text-white font-bold py-3 rounded-lg hover:bg-green-600 transition-colors">
-                        Add & Share Files
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Receive a File</h2>
+                <p className="text-gray-600 mt-2">Enter the 4-digit code from the sender.</p>
+                <div className="mt-6 flex items-center space-x-2">
+                    <input
+                        type="text"
+                        maxLength="4"
+                        value={inputCode}
+                        onChange={(e) => setInputCode(e.target.value.trim())}
+                        placeholder="1234"
+                        className="w-full text-center text-xl font-mono p-2 border-2 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition"
+                    />
+                    <button
+                        onClick={() => onJoin(inputCode)}
+                        disabled={inputCode.length !== 4}
+                        className={`bg-blue-500 text-white font-bold py-2 px-4 rounded-lg transition-colors ${inputCode.length !== 4 ? 'bg-gray-400 cursor-not-allowed' : 'hover:bg-blue-600'}`}
+                    >
+                        Connect
                     </button>
-                    <input type="file" multiple ref={addFilesInputRef} className="hidden" onChange={handleFileSelect} />
-                </>
-            )}
+                </div>
+                <div className="mt-4 p-3 bg-gray-100 rounded-lg text-gray-800 min-h-[50px] text-sm">
+                    <strong>Status:</strong> {status}
+                </div>
+            </div>
+        );
+    }
 
-            <div className="mt-6 p-3 bg-gray-100 rounded-lg text-gray-800 min-h-[50px] text-sm">
-                <strong>Status:</strong> {status}
+    return (
+        <div className="flex flex-col lg:flex-row space-y-6 lg:space-y-0 lg:space-x-6 w-full max-w-6xl mx-auto">
+            {/* Left Card: Download/Upload Files */}
+            <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full lg:w-3/5 text-center relative">
+                <div className="flex border-b border-gray-200 mb-6">
+                    <button
+                        onClick={() => setActiveTab('download')}
+                        className={`flex-1 py-3 font-semibold transition-colors relative flex items-center justify-center space-x-2 ${activeTab === 'download' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}
+                    >
+                        <span>Download</span>
+                        {peerFileCount > 0 && (
+                            <span className="bg-red-500 text-white text-[10px] rounded-full px-2 py-0.5 font-bold">
+                                {peerFileCount}
+                            </span>
+                        )}
+                    </button>
+                    <button onClick={() => setActiveTab('upload')} className={`flex-1 py-3 font-semibold transition-colors ${activeTab === 'upload' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>
+                        Upload
+                    </button>
+                </div>
+                {activeTab === 'download' ? (
+                    <>
+                        <FileList
+                            title="Remote Files to Download"
+                            files={peerFiles}
+                            showDownloadButton={true}
+                            onDownload={onFileDownload}
+                            onFileClick={onFileClick}
+                        />
+                        {peerFiles.length > 0 && (
+                            <button
+                                onClick={onDownloadAll}
+                                disabled={isDownloading}
+                                className={`mt-4 w-full font-bold py-3 rounded-lg transition-colors relative overflow-hidden ${isDownloading ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
+                            >
+                                {isDownloading ? (
+                                    <>
+                                        <div
+                                            className="absolute top-0 left-0 h-full bg-blue-400 transition-all duration-150"
+                                            style={{ width: `${downloadProgress}%` }}
+                                        ></div>
+                                        <span className="relative z-10 text-white">Downloading... {downloadProgress}%</span>
+                                    </>
+                                ) : (
+                                    'Download All Files'
+                                )}
+                            </button>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        <div onClick={() => addFilesInputRef.current?.click()} className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center text-gray-400 cursor-pointer hover:border-blue-400 transition-colors duration-200">
+                            <Upload className="h-8 w-8 text-blue-500 mx-auto" />
+                            <p className="mt-2 text-sm">Drag & drop or click to choose files</p>
+                            <div className="text-xs text-gray-500 mt-2 flex justify-between">
+                                <span>Supported formats: XLS, XLSX</span>
+                                <span>Max: 25MB</span>
+                            </div>
+                        </div>
+                        <input type="file" multiple ref={addFilesInputRef} className="hidden" onChange={handleFileSelect} />
+                        <FileList title="Your Files" files={myFiles} showDeleteButton={true} onDelete={onFileDelete} onFileClick={onFileClick} />
+                    </>
+                )}
+            </div>
+
+            {/* Right Card: Status (Simplified) */}
+            <div className="w-full lg:w-2/5">
+                <SharingStatusCard
+                    shareLink=""
+                    downloadCode=""
+                    status={status}
+                    onCopy={() => { }}
+                    copied={false}
+                    onCancel={onCancel}
+                />
             </div>
         </div>
     );
@@ -296,6 +522,7 @@ export default function App() {
     const [isDownloading, setIsDownloading] = useState(false);
     const [isHost, setIsHost] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState(0);
+    const [peerFileCount, setPeerFileCount] = useState(0);
 
     // File Management State
     const [myFiles, setMyFiles] = useState([]);
@@ -315,9 +542,16 @@ export default function App() {
     const totalDownloadSizeRef = useRef(0);
     const totalReceivedSizeRef = useRef(0);
 
+    // Modal state from custom hook
+    const { isOpen, modalContent, openModal, closeModal } = useModal();
+
     useEffect(() => {
         myFilesRef.current = myFiles;
     }, [myFiles]);
+
+    useEffect(() => {
+        setPeerFileCount(peerFiles.length);
+    }, [peerFiles]);
 
     const initializeSocket = () => {
         if (socketRef.current) {
@@ -325,7 +559,6 @@ export default function App() {
             socketRef.current.disconnect();
         }
 
-        // const socket = io(SOCKET_URL);
         const socket = io(SOCKET_URL, {
             transports: ["websocket"],
             secure: true,
@@ -402,6 +635,7 @@ export default function App() {
         setDownloadProgress(0);
         setStatus("Waiting to start...");
         setView('upload');
+        closeModal();
 
         if (reinitializeSocket) {
             initializeSocket();
@@ -469,18 +703,29 @@ export default function App() {
         try {
             if (typeof data === "string") {
                 const message = JSON.parse(data);
-                if (message.type === 'file-list') setPeerFiles(message.payload);
-                else if (message.type === 'request-file') sendFile(message.payload.name);
-                else if (message.type === 'info') {
+                if (message.type === 'file-list') {
+                    // Initialize peer files with progress property
+                    setPeerFiles(message.payload.map(file => ({ ...file, progress: 0 })));
+                } else if (message.type === 'request-file') {
+                    sendFile(message.payload.name);
+                } else if (message.type === 'info') {
                     receivingFileRef.current = { ...message.payload };
                     receivedChunksRef.current = [];
+                    // Reset progress for all files and start progress for the current file
+                    setPeerFiles(prevFiles => prevFiles.map(f => f.name === message.payload.name ? { ...f, progress: 0 } : { ...f, progress: 0 }));
+                    totalReceivedSizeRef.current = 0;
+                    totalDownloadSizeRef.current = message.payload.size;
                 } else if (message.type === 'eof') {
                     const file = receivingFileRef.current;
                     if (!file) return;
                     const fileBlob = new Blob(receivedChunksRef.current, { type: file.type });
+                    // Store the blob URL for preview
                     const url = URL.createObjectURL(fileBlob);
-                    setDownloadedBlobs(prev => ({ ...prev, [file.name]: url }));
+                    setDownloadedBlobs(prev => ({ ...prev, [file?.name]: url }));
                     receivingFileRef.current = null;
+                    // Set final progress to 100% and mark as downloaded
+                    setPeerFiles(prevFiles => prevFiles.map(f => f.name === file?.name ? { ...f, progress: 100, downloadedUrl: url } : f));
+                    setDownloadProgress(0); // Reset overall progress
                 } else if (message.type === 'download-complete') {
                     setToaster("Files sent successfully!");
                     setMyFiles([]);
@@ -492,6 +737,8 @@ export default function App() {
                     if (totalDownloadSizeRef.current > 0) {
                         const percent = Math.round((totalReceivedSizeRef.current / totalDownloadSizeRef.current) * 100);
                         setDownloadProgress(percent);
+                        // Update progress for the specific file
+                        setPeerFiles(prevFiles => prevFiles.map(f => f.name === receivingFileRef.current?.name ? { ...f, progress: percent } : f));
                     }
                 }
             }
@@ -499,21 +746,25 @@ export default function App() {
     };
 
     useEffect(() => {
-        if (peerFiles.length > 0 && Object.keys(downloadedBlobs).length === peerFiles.length) {
-            setToaster("Download finished!");
+        if (peerFiles.length > 0 && Object.keys(downloadedBlobs).length > 0) {
             Object.entries(downloadedBlobs).forEach(([name, url]) => {
                 const a = document.createElement('a'); a.href = url; a.download = name;
                 document.body.appendChild(a); a.click(); a.remove();
             });
-            if (dcRef.current?.readyState === 'open') {
-                dcRef.current.send(JSON.stringify({ type: 'download-complete' }));
-            }
-            setPeerFiles([]);
+
+            // Remove downloaded files from the list
+            setPeerFiles(prevFiles => prevFiles.filter(file => !downloadedBlobs[file.name]));
+
             setDownloadedBlobs({});
             setIsDownloading(false);
             setDownloadProgress(0);
             totalDownloadSizeRef.current = 0;
             totalReceivedSizeRef.current = 0;
+
+            if (dcRef.current?.readyState === 'open') {
+                dcRef.current.send(JSON.stringify({ type: 'download-complete' }));
+            }
+            setToaster("Download finished!");
         }
     }, [downloadedBlobs, peerFiles]);
 
@@ -581,6 +832,19 @@ export default function App() {
         socketRef.current.emit("create-room");
     };
 
+    const handleFileDelete = (fileName) => {
+        setMyFiles(prevFiles => prevFiles.filter(file => file.name !== fileName));
+    };
+
+    const handleFileDownload = (fileName) => {
+        if (dcRef.current?.readyState === 'open' && peerFiles.some(file => file.name === fileName)) {
+            dcRef.current.send(JSON.stringify({ type: 'request-file', payload: { name: fileName } }));
+
+            // Do NOT remove the file from the list immediately.
+            // It will be removed later in the useEffect when it's fully downloaded.
+        }
+    };
+
     const handleAddFiles = (newFiles) => {
         const filesToAdd = newFiles
             .filter(nf => !myFiles.some(mf => mf.name === nf.name))
@@ -622,8 +886,18 @@ export default function App() {
         handleResetState(true);
     };
 
+    // Handler to open the preview modal
+    const handleFileClick = (file) => {
+        // If the file is from a peer and not yet downloaded, we can't preview it
+        if (file.downloadedUrl || file.file) {
+            openModal(file);
+        } else {
+            setToaster("File must be downloaded to view a preview.");
+        }
+    };
+
     const renderView = () => {
-        const props = { status, isConnected, myFiles, peerFiles, onAddFiles: handleAddFiles, onCancel: handleCancel, downloadProgress };
+        const props = { status, isConnected, myFiles, peerFiles, onAddFiles: handleAddFiles, onCancel: handleCancel, downloadProgress, onFileDelete: handleFileDelete, onFileDownload: handleFileDownload, onFileClick: handleFileClick, peerFileCount };
         switch (view) {
             case 'sharing':
                 return <SharingView {...props} shareLink={shareLink} downloadCode={downloadCode} onDownloadAll={handleDownloadAll} isDownloading={isDownloading} />;
@@ -640,11 +914,13 @@ export default function App() {
             <WavyBackground />
             <Toaster message={toaster} onClear={() => setToaster('')} />
             <div className="relative z-10 w-full flex flex-col items-center justify-center flex-grow">
-                {view === 'upload' && <Header />}
+                {/* Header is now always visible */}
+                <Header />
                 <main className="flex-grow flex items-center justify-center w-full max-w-7xl">
                     {renderView()}
                 </main>
             </div>
+            <FilePreviewModal file={modalContent} isOpen={isOpen} onClose={closeModal} />
         </div>
     );
 }
