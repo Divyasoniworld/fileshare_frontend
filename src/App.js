@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { io } from "socket.io-client";
 // Lucide icons
-import { X, Copy, Upload, File, Image, Music, Video, FileText, Download, ThumbsDown } from 'lucide-react';
+import { X, Copy, Upload, File, Image, Music, Video, FileText, Download } from 'lucide-react';
 
 // --- Configuration ---
 const SOCKET_URL = process.env.REACT_APP_BASE_URL
@@ -55,11 +55,11 @@ const FilePreviewModal = ({ file, isOpen, onClose }) => {
         const url = isLocal ? localUrl : remoteUrl;
 
         // Determine if a preview is possible
-        if (fileType.startsWith('image/')) {
+        if (fileType?.startsWith('image/')) {
             return <img src={url} alt={file.name} className="max-h-96 max-w-full object-contain" />;
-        } else if (fileType.startsWith('video/')) {
+        } else if (fileType?.startsWith('video/')) {
             return <video controls src={url} className="max-h-96 max-w-full" />;
-        } else if (fileType.startsWith('audio/')) {
+        } else if (fileType?.startsWith('audio/')) {
             return <audio controls src={url} className="w-full" />;
         } else if (fileType === 'application/pdf') {
             return <p className="text-gray-500">PDF preview is not supported. Please download the file to view it.</p>;
@@ -113,12 +113,11 @@ const FileList = ({ title, files, showDownloadButton, onDownload, showDeleteButt
             ) : (
                 <div className="mt-2 space-y-2 max-h-32 sm:max-h-40 overflow-y-auto pr-2">
                     {files.map(file => {
-                        // The crucial fix: Check if 'file' is null or its 'name' property is missing
                         if (!file || !file.name) {
-                            return null; // Skip rendering this item
+                            return null;
                         }
 
-                        const fileSize = (file.size / 1024 / 1024).toFixed(2); // size in MB
+                        const fileSize = (file.size / 1024 / 1024).toFixed(2);
                         return (
                             <div key={file.name} className="flex items-center justify-between p-2 bg-gray-50 rounded-md shadow-sm">
                                 <div className="flex-1 flex items-center space-x-3 cursor-pointer" onClick={() => onFileClick(file)}>
@@ -212,7 +211,7 @@ const Header = () => (
 
 const SubHeader = () => (
     <h2 className="text-white text-center text-xl sm:text-xl md:text-2xl font-semibold tracking-wide mt-4 md:mt-6">
-        Direct file transfer. Simple and secure.
+        Elegant file transfer, simplified for you.
     </h2>
 );
 
@@ -241,48 +240,44 @@ const FileUploadView = ({ onFilesSelected, setView, isReady }) => {
 
     return (
         <div className="text-center w-full px-4">
-
-            <>
-                <div
-                    className={`mt-8 sm:mt-12 mx-auto w-full max-w-xl p-6 sm:p-8 bg-white rounded-2xl shadow-2xl backdrop-blur-sm cursor-pointer border-2 border-dashed transition-all duration-300 ${isDragging ? 'border-blue-500 scale-105' : 'border-black/50'}`}
-                    onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}
-                >
-
-                    {
-                        isReady ? (
-
-                            <>
-                                <div className="flex flex-col items-center justify-center space-y-4">
-                                    <Upload className="h-8 w-8 text-blue-500 mx-auto" />
-                                    <p className="text-lg font-medium text-gray-700">Drag and Drop files to upload</p>
-                                    <p className="text-gray-500">or</p>
-                                    <button
-                                        onClick={openFileDialog}
-                                        className="bg-blue-500 text-white font-medium py-2 px-6 rounded-full hover:bg-blue-600 transition-colors"
-                                    >
-                                        Browse
-                                    </button>
-                                    {/* <p className="text-xs text-gray-400">Supported formats: XLS, XLSX</p> */}
-                                </div>
-                                <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
-                            </>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center space-y-4">
-                                <p className="text-lg font-medium text-gray-700 animate-pulse">
-                                    Please wait until I'm ready to transfer your files...
-                                </p>
-                            </div>
-                        )
-                    }
-
+            {isReady ? (
+                <>
+                    <div
+                        className={`mt-8 sm:mt-12 mx-auto w-full max-w-xl p-6 sm:p-8 bg-white rounded-2xl shadow-2xl backdrop-blur-sm cursor-pointer border-2 border-dashed transition-all duration-300 ${isDragging ? 'border-blue-500 scale-105' : 'border-black/50'}`}
+                        onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}
+                    >
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                            <Upload className="h-8 w-8 text-blue-500 mx-auto" />
+                            <p className="text-lg font-medium text-gray-700">Drag and Drop files to upload</p>
+                            <p className="text-gray-500">or</p>
+                            <button
+                                onClick={openFileDialog}
+                                className="bg-blue-500 text-white font-medium py-2 px-6 rounded-full hover:bg-blue-600 transition-colors"
+                            >
+                                Browse
+                            </button>
+                            <p className="text-xs text-gray-400">Supported formats: XLS, XLSX</p>
+                        </div>
+                        <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
+                    </div>
+                    <p className="mt-8">
+                        <button onClick={() => setView('receiving')} className="text-white opacity-80 hover:opacity-100 underline">
+                            Or receive a file?
+                        </button>
+                    </p>
+                </>
+            ) : (
+                <div className="mt-8 sm:mt-12 mx-auto w-full max-w-xl p-6 sm:p-8 bg-white rounded-2xl shadow-2xl backdrop-blur-sm text-center">
+                    <p className="text-lg font-medium text-gray-700 animate-pulse">
+                        Please wait until I'm ready to transfer your files...
+                    </p>
+                    <p className="mt-8">
+                        <button onClick={() => setView('receiving')} className="text-white opacity-80 hover:opacity-100 underline">
+                            Or receive a file?
+                        </button>
+                    </p>
                 </div>
-                <p className="mt-8">
-                    <button onClick={() => setView('receiving')} className="text-white opacity-80 hover:opacity-100 underline">
-                        Or receive a file?
-                    </button>
-                </p>
-            </>
-
+            )}
         </div>
     );
 };
@@ -371,8 +366,7 @@ const SharingView = ({ myFiles, peerFiles, shareLink, downloadCode, status, onAd
                             <button
                                 onClick={onDownloadAll}
                                 disabled={isDownloading}
-                                className={`mt-4 w-full font-bold py-3 rounded-lg transition-colors relative overflow-hidden ${isDownloading ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'
-                                    }`}
+                                className={`mt-4 w-full font-bold py-3 rounded-lg transition-colors relative overflow-hidden ${isDownloading ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
                             >
                                 {isDownloading ? (
                                     <>
@@ -391,7 +385,7 @@ const SharingView = ({ myFiles, peerFiles, shareLink, downloadCode, status, onAd
                 )}
             </div>
 
-            {/* Right Card: Status & Code */}
+            {/* Right Card: Status (Simplified) */}
             <div className="w-full lg:w-2/5">
                 <SharingStatusCard
                     shareLink={shareLink}
@@ -429,7 +423,7 @@ const ReceiverView = ({ onJoin, status, isConnected, peerFiles, myFiles, onAddFi
                 <p className="text-gray-600 mt-2">Enter the 4-digit code from the sender.</p>
                 <div className="mt-6 flex items-center space-x-2">
                     <input
-                        type="number"
+                        type="tel"
                         maxLength="4"
                         value={inputCode}
                         onChange={(e) => {
@@ -438,7 +432,7 @@ const ReceiverView = ({ onJoin, status, isConnected, peerFiles, myFiles, onAddFi
                                 setInputCode(value);
                             }
                         }}
-                        placeholder="Enter your code"
+                        placeholder="1234"
                         className="w-full text-center text-xl font-mono p-2 border-2 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition"
                     />
                     <button
@@ -552,7 +546,7 @@ export default function App() {
     const [isHost, setIsHost] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState(0);
     const [peerFileCount, setPeerFileCount] = useState(0);
-    const [isSocketReady, setIsSocketReady] = useState(false); // New state for socket connection status
+    const [isSocketReady, setIsSocketReady] = useState(false);
 
     // File Management State
     const [myFiles, setMyFiles] = useState([]);
@@ -565,12 +559,16 @@ export default function App() {
     const dcRef = useRef(null);
     const roomRef = useRef('');
     const myFilesRef = useRef(myFiles);
+    
+    // Add this ref to track the files being downloaded to handle the sequential process
+    const downloadQueueRef = useRef([]);
 
     // Refs for receiving file chunks
     const receivingFileRef = useRef(null);
     const receivedChunksRef = useRef([]);
     const totalDownloadSizeRef = useRef(0);
     const totalReceivedSizeRef = useRef(0);
+    const downloadedTotalSizeRef = useRef(0);
 
     // Modal state from custom hook
     const { isOpen, modalContent, openModal, closeModal } = useModal();
@@ -582,231 +580,12 @@ export default function App() {
     useEffect(() => {
         setPeerFileCount(peerFiles.length);
     }, [peerFiles]);
+    
+    // =================================================================
+    // ================== WEBRTC & SOCKET FUNCTIONS ====================
+    // =================================================================
 
-    const initializeSocket = () => {
-        if (socketRef.current) {
-            socketRef.current.off(); // Remove all event listeners
-            socketRef.current.disconnect();
-        }
-
-        const socket = io(SOCKET_URL, {
-            transports: ["websocket"],
-            secure: true,
-        });
-
-        socketRef.current = socket;
-
-        socket.on("connect", () => {
-            console.log("Connected:", socket.id);
-            setIsSocketReady(true);
-        });
-
-        socket.on("disconnect", () => {
-            console.log("Disconnected:", socket.id);
-            setIsSocketReady(false);
-        });
-
-        socket.on("room-created", (roomId) => {
-            roomRef.current = roomId;
-            setDownloadCode(roomId);
-            setShareLink(`${window.location.origin}/receive/${roomId}`);
-            setStatus(`Room ${roomId} created. Waiting for peer...`);
-            setIsHost(true);
-            newPC(true);
-            setView('sharing');
-        });
-
-        socket.on("peer-joined", async () => {
-            setStatus("Peer joined. Establishing connection...");
-            if (pcRef.current) {
-                const offer = await pcRef.current.createOffer();
-                await pcRef.current.setLocalDescription(offer);
-                socket.emit("signal", { room: roomRef.current, data: { type: "offer", sdp: pcRef.current.localDescription } });
-            }
-        });
-
-        socket.on("peer-left", () => {
-            setStatus("Peer left. Waiting for a new connection...");
-            pcRef.current?.close();
-            newPC(true); // Re-initialize as host waiting for new peer
-        });
-
-        socket.on("session-cancelled", () => {
-            setToaster("The session was ended by the host.");
-            handleResetState(true);
-        });
-
-        socket.on("signal", async (msg) => {
-            if (!pcRef.current) newPC(false);
-
-            if (msg.type === "offer") {
-                await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-                const answer = await pcRef.current.createAnswer();
-                await pcRef.current.setLocalDescription(answer);
-                socket.emit("signal", { room: roomRef.current, data: { type: "answer", sdp: pcRef.current.localDescription } });
-            } else if (msg.type === "answer") {
-                await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp));
-            } else if (msg.type === "ice") {
-                try {
-                    await pcRef.current.addIceCandidate(new RTCIceCandidate(msg.candidate));
-                } catch (e) { console.error("ICE candidate error", e); }
-            }
-        });
-
-        socket.on('room-full', () => setStatus('Error: Session is full.'));
-        socket.on('room-not-found', () => setStatus('Error: Share code not found.'));
-    };
-
-    const handleResetState = (reinitializeSocket = true) => {
-        pcRef.current?.close();
-        pcRef.current = null;
-        dcRef.current = null;
-
-        setIsConnected(false);
-        setIsDownloading(false);
-        setMyFiles([]);
-        setPeerFiles([]);
-        setDownloadedBlobs({});
-        setDownloadCode('');
-        setShareLink('');
-        setIsHost(false);
-        setDownloadProgress(0);
-        setStatus("Waiting to start...");
-        setView('upload');
-        closeModal();
-
-        if (reinitializeSocket) {
-            initializeSocket();
-        }
-    };
-
-    useEffect(() => {
-        initializeSocket();
-
-        const path = window.location.pathname;
-        if (path.startsWith('/receive/')) {
-            const roomFromUrl = path.split('/')[2];
-            if (roomFromUrl) {
-                setView('receiving');
-                setTimeout(() => handleJoin(roomFromUrl), 100);
-            }
-        }
-
-        return () => {
-            socketRef.current?.disconnect();
-        };
-    }, []);
-
-    const newPC = (isHost) => {
-        pcRef.current = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-        pcRef.current.onicecandidate = (e) => {
-            if (e.candidate) socketRef.current.emit("signal", { room: roomRef.current, data: { type: "ice", candidate: e.candidate } });
-        };
-        pcRef.current.onconnectionstatechange = () => {
-            const state = pcRef.current?.connectionState;
-            setStatus("Connection: " + state);
-            setIsConnected(state === 'connected');
-            if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-                if (isHost) {
-                    pcRef.current?.close();
-                    newPC(true);
-                    setStatus("Peer disconnected. Waiting for a new one...");
-                }
-            }
-        };
-        if (isHost) {
-            dcRef.current = pcRef.current.createDataChannel("file-transfer");
-            setupDC();
-        } else {
-            pcRef.current.ondatachannel = (e) => {
-                dcRef.current = e.channel;
-                setupDC();
-            };
-        }
-    };
-
-    const setupDC = () => {
-        dcRef.current.binaryType = "arraybuffer";
-        dcRef.current.onopen = () => shareMyFileList();
-        dcRef.current.onclose = () => {
-            setIsConnected(false);
-            setPeerFiles([]);
-        };
-        dcRef.current.onerror = (e) => console.error("DC error:", e);
-        dcRef.current.onmessage = handleDataChannelMessage;
-    };
-
-    const handleDataChannelMessage = (e) => {
-        const { data } = e;
-        try {
-            if (typeof data === "string") {
-                const message = JSON.parse(data);
-                if (message.type === 'file-list') {
-                    // Initialize peer files with progress property
-                    setPeerFiles(message.payload.map(file => ({ ...file, progress: 0 })));
-                } else if (message.type === 'request-file') {
-                    sendFile(message.payload.name);
-                } else if (message.type === 'info') {
-                    receivingFileRef.current = { ...message.payload };
-                    receivedChunksRef.current = [];
-                    // Reset progress for all files and start progress for the current file
-                    setPeerFiles(prevFiles => prevFiles.map(f => f.name === message.payload.name ? { ...f, progress: 0 } : { ...f, progress: 0 }));
-                    totalReceivedSizeRef.current = 0;
-                    totalDownloadSizeRef.current = message.payload.size;
-                } else if (message.type === 'eof') {
-                    const file = receivingFileRef.current;
-                    if (!file) return;
-                    const fileBlob = new Blob(receivedChunksRef.current, { type: file.type });
-                    // Store the blob URL for preview
-                    const url = URL.createObjectURL(fileBlob);
-                    setDownloadedBlobs(prev => ({ ...prev, [file?.name]: url }));
-                    receivingFileRef.current = null;
-                    // Set final progress to 100% and mark as downloaded
-                    setPeerFiles(prevFiles => prevFiles.map(f => f.name === file?.name ? { ...f, progress: 100, downloadedUrl: url } : f));
-                    setDownloadProgress(0); // Reset overall progress
-                } else if (message.type === 'download-complete') {
-                    setToaster("Files sent successfully!");
-                    setMyFiles([]);
-                }
-            } else {
-                if (receivingFileRef.current) {
-                    receivedChunksRef.current.push(data);
-                    totalReceivedSizeRef.current += data.byteLength;
-                    if (totalDownloadSizeRef.current > 0) {
-                        const percent = Math.round((totalReceivedSizeRef.current / totalDownloadSizeRef.current) * 100);
-                        setDownloadProgress(percent);
-                        // Update progress for the specific file
-                        setPeerFiles(prevFiles => prevFiles.map(f => f.name === receivingFileRef.current?.name ? { ...f, progress: percent } : f));
-                    }
-                }
-            }
-        } catch (err) { console.error("Message error:", err); }
-    };
-
-    useEffect(() => {
-        if (peerFiles.length > 0 && Object.keys(downloadedBlobs).length > 0) {
-            Object.entries(downloadedBlobs).forEach(([name, url]) => {
-                const a = document.createElement('a'); a.href = url; a.download = name;
-                document.body.appendChild(a); a.click(); a.remove();
-            });
-
-            // Remove downloaded files from the list
-            setPeerFiles(prevFiles => prevFiles.filter(file => !downloadedBlobs[file.name]));
-
-            setDownloadedBlobs({});
-            setIsDownloading(false);
-            setDownloadProgress(0);
-            totalDownloadSizeRef.current = 0;
-            totalReceivedSizeRef.current = 0;
-
-            if (dcRef.current?.readyState === 'open') {
-                dcRef.current.send(JSON.stringify({ type: 'download-complete' }));
-            }
-            setToaster("Download finished!");
-        }
-    }, [downloadedBlobs, peerFiles]);
-
-    const sendFile = (fileName) => {
+    const sendFile = useCallback((fileName) => {
         const fileData = myFilesRef.current.find(f => f.name === fileName);
         if (!fileData) {
             console.error(`File ${fileName} not found.`);
@@ -850,7 +629,7 @@ export default function App() {
                         readSlice(offset);
                     }
                 } else {
-                    dcRef.current.send(JSON.stringify({ type: 'eof' }));
+                    dcRef.current.send(JSON.stringify({ type: 'eof', payload: { name: file.name } }));
                 }
             } catch (error) {
                 console.error("Send error:", error);
@@ -863,7 +642,270 @@ export default function App() {
         };
 
         readSlice(0);
-    };
+    }, []);
+
+
+    const handleDataChannelMessage = useCallback((e) => {
+    const { data } = e;
+    try {
+        if (typeof data === "string") {
+            const message = JSON.parse(data);
+            if (message.type === 'file-list') {
+                setPeerFiles(message.payload.map(file => ({ ...file, progress: 0 })));
+            } else if (message.type === 'request-file') {
+                sendFile(message.payload.name);
+            } else if (message.type === 'info') {
+                receivingFileRef.current = { ...message.payload };
+                receivedChunksRef.current = [];
+                setPeerFiles(prevFiles => prevFiles.map(f => f.name === message.payload.name ? { ...f, progress: 0 } : f));
+                totalReceivedSizeRef.current = 0;
+                totalDownloadSizeRef.current = message.payload.size;
+            } else if (message.type === 'eof') {
+                const { name } = message.payload;
+                const file = receivingFileRef.current;
+                if (!file || file.name !== name) return;
+
+                const fileBlob = new Blob(receivedChunksRef.current, { type: file.type });
+                const url = URL.createObjectURL(fileBlob);
+                
+                // Store the downloaded blob for this specific file
+                setDownloadedBlobs(prev => ({ ...prev, [file.name]: url }));
+                
+                // Update the file with downloadedUrl for preview
+                setPeerFiles(prevFiles => prevFiles.map(f => 
+                    f.name === file.name ? { ...f, downloadedUrl: url, progress: 100 } : f
+                ));
+                
+                // Add to downloaded total size
+                downloadedTotalSizeRef.current += file.size;
+                
+                receivingFileRef.current = null;
+                
+                // Check if there are more files in the download queue
+                if (downloadQueueRef.current.length > 0) {
+                    const nextFile = downloadQueueRef.current.shift();
+                    if (nextFile) {
+                        dcRef.current.send(JSON.stringify({ type: 'request-file', payload: { name: nextFile.name } }));
+                    }
+                } else {
+                    setIsDownloading(false);
+                    setDownloadProgress(0);
+                    downloadedTotalSizeRef.current = 0; // Reset total size
+                    setToaster("All files downloaded!");
+                    
+                    if (dcRef.current?.readyState === 'open') {
+                        dcRef.current.send(JSON.stringify({ type: 'download-complete' }));
+                    }
+                }
+            } else if (message.type === 'download-complete') {
+                setToaster("Files sent successfully!");
+                // No change needed here, let the sender handle their own files
+            }
+        } else {
+            if (receivingFileRef.current) {
+                receivedChunksRef.current.push(data);
+                totalReceivedSizeRef.current += data.byteLength;
+                
+                // Calculate progress differently for single vs multiple file downloads
+                let overallProgress;
+                const totalSizeOfAllFiles = peerFiles.reduce((sum, file) => sum + file.size, 0);
+                const downloadedSize = downloadedTotalSizeRef.current + totalReceivedSizeRef.current;
+                overallProgress = totalSizeOfAllFiles > 0 ? Math.round((downloadedSize / totalSizeOfAllFiles) * 100) : 0;
+                
+                setDownloadProgress(overallProgress);
+                
+                setPeerFiles(prevFiles => prevFiles.map(f => 
+                    f.name === receivingFileRef.current?.name 
+                        ? { ...f, progress: Math.round((totalReceivedSizeRef.current / totalDownloadSizeRef.current) * 100) } 
+                        : f
+                ));
+            }
+        }
+    } catch (err) { 
+        console.error("Message error:", err); 
+    }
+}, [peerFiles, setPeerFiles, setDownloadProgress, setIsDownloading, setToaster, sendFile]);
+    
+    const setupDC = useCallback(() => {
+        dcRef.current.binaryType = "arraybuffer";
+        dcRef.current.onopen = () => shareMyFileList();
+        dcRef.current.onclose = () => {
+            setIsConnected(false);
+            setPeerFiles([]);
+        };
+        dcRef.current.onerror = (e) => console.error("DC error:", e);
+        dcRef.current.onmessage = handleDataChannelMessage;
+    }, [handleDataChannelMessage]);
+
+    const newPC = useCallback((isHost) => {
+        pcRef.current = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        pcRef.current.onicecandidate = (e) => {
+            if (e.candidate) socketRef.current.emit("signal", { room: roomRef.current, data: { type: "ice", candidate: e.candidate } });
+        };
+        pcRef.current.onconnectionstatechange = () => {
+            const state = pcRef.current?.connectionState;
+            setStatus("Connection: " + state);
+            setIsConnected(state === 'connected');
+            if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+                if (isHost) {
+                    pcRef.current?.close();
+                    newPC(true);
+                    setStatus("Peer disconnected. Waiting for a new one...");
+                }
+            }
+        };
+        if (isHost) {
+            dcRef.current = pcRef.current.createDataChannel("file-transfer");
+            setupDC();
+        } else {
+            pcRef.current.ondatachannel = (e) => {
+                dcRef.current = e.channel;
+                setupDC();
+            };
+        }
+    }, [setupDC]);
+
+    
+
+    // Move the initializeSocket function BEFORE handleResetState
+// Replace the function definitions in this order:
+
+const initializeSocket = useCallback(() => {
+    if (socketRef.current) {
+        socketRef.current.off();
+        socketRef.current.disconnect();
+    }
+
+    const socket = io(SOCKET_URL, {
+        transports: ["websocket"],
+        secure: true,
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+        console.log("Connected:", socket.id);
+        setIsSocketReady(true);
+    });
+
+    socket.on("disconnect", () => {
+        console.log("Disconnected:", socket.id);
+        setIsSocketReady(false);
+    });
+
+    socket.on("room-created", (roomId) => {
+        roomRef.current = roomId;
+        setDownloadCode(roomId);
+        setShareLink(`${window.location.origin}/receive/${roomId}`);
+        setStatus(`Room ${roomId} created. Waiting for peer...`);
+        setIsHost(true);
+        newPC(true);
+        setView('sharing');
+    });
+
+    socket.on("peer-joined", async () => {
+        setStatus("Peer joined. Establishing connection...");
+        if (pcRef.current) {
+            const offer = await pcRef.current.createOffer();
+            await pcRef.current.setLocalDescription(offer);
+            socket.emit("signal", { room: roomRef.current, data: { type: "offer", sdp: pcRef.current.localDescription } });
+        }
+    });
+
+    socket.on("peer-left", () => {
+        setStatus("Peer left. Waiting for a new connection...");
+        pcRef.current?.close();
+        newPC(true);
+        setStatus("Peer disconnected. Waiting for a new one...");
+    });
+
+    socket.on("session-cancelled", () => {
+        setToaster("The session was ended by the host.");
+        handleResetState(true);
+    });
+
+    socket.on("signal", async (msg) => {
+        if (!pcRef.current) newPC(false);
+
+        if (msg.type === "offer") {
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+            const answer = await pcRef.current.createAnswer();
+            await pcRef.current.setLocalDescription(answer);
+            socket.emit("signal", { room: roomRef.current, data: { type: "answer", sdp: pcRef.current.localDescription } });
+        } else if (msg.type === "answer") {
+            await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+        } else if (msg.type === "ice") {
+            try {
+                await pcRef.current.addIceCandidate(new RTCIceCandidate(msg.candidate));
+            } catch (e) { console.error("ICE candidate error", e); }
+        }
+    });
+
+    socket.on('room-full', () => setStatus('Error: Session is full.'));
+    socket.on('room-not-found', () => setStatus('Error: Share code not found.'));
+}, [newPC]); // Remove handleResetState from dependencies to avoid circular dependency
+
+const handleResetState = useCallback((reinitializeSocket = true) => {
+    pcRef.current?.close();
+    pcRef.current = null;
+    dcRef.current = null;
+
+    setIsConnected(false);
+    setIsDownloading(false);
+    setMyFiles([]);
+    setPeerFiles([]);
+    setDownloadedBlobs({});
+    setDownloadCode('');
+    setShareLink('');
+    setIsHost(false);
+    setDownloadProgress(0);
+    setStatus("Waiting to start...");
+    setView('upload');
+    closeModal();
+
+    if (reinitializeSocket) {
+        initializeSocket();
+    }
+}, [closeModal, initializeSocket]);
+
+    // Use a single useEffect for socket initialization
+    useEffect(() => {
+        initializeSocket();
+
+        const path = window.location.pathname;
+        if (path.startsWith('/receive/')) {
+            const roomFromUrl = path.split('/')[2];
+            if (roomFromUrl) {
+                setView('receiving');
+                setTimeout(() => handleJoin(roomFromUrl), 100);
+            }
+        }
+
+        return () => {
+            socketRef.current?.disconnect();
+        };
+    }, [initializeSocket]);
+    
+    // =================================================================
+    // ================== FILE DOWNLOAD & UI HANDLERS ==================
+    // =================================================================
+
+    useEffect(() => {
+    if (Object.keys(downloadedBlobs).length > 0) {
+        Object.entries(downloadedBlobs).forEach(([name, url]) => {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = name;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        });
+
+        // Don't remove files from peerFiles list anymore - they stay for potential re-download
+        // Just clear the downloadedBlobs
+        setDownloadedBlobs({});
+    }
+}, [downloadedBlobs]);
 
     const handleFilesSelected = (selectedFiles) => {
         setMyFiles(selectedFiles.map(file => ({ file, name: file.name, size: file.size, type: file.type })));
@@ -873,15 +915,26 @@ export default function App() {
     const handleFileDelete = (fileName) => {
         setMyFiles(prevFiles => prevFiles.filter(file => file.name !== fileName));
     };
-
-    const handleFileDownload = (fileName) => {
-        if (dcRef.current?.readyState === 'open' && peerFiles.some(file => file.name === fileName)) {
-            dcRef.current.send(JSON.stringify({ type: 'request-file', payload: { name: fileName } }));
-
-            // Do NOT remove the file from the list immediately.
-            // It will be removed later in the useEffect when it's fully downloaded.
+    
+const handleFileDownload = useCallback((fileName) => {
+    if (dcRef.current?.readyState === 'open') {
+        const fileToDownload = peerFiles.find(file => file.name === fileName);
+        if (fileToDownload) {
+            // Clear the download queue for single file download
+            downloadQueueRef.current = [fileToDownload];
+            
+            setIsDownloading(true);
+            setDownloadProgress(0);
+            totalReceivedSizeRef.current = 0;
+            downloadedTotalSizeRef.current = 0;
+            
+            const firstFile = downloadQueueRef.current.shift();
+            if (firstFile) {
+                dcRef.current.send(JSON.stringify({ type: 'request-file', payload: { name: firstFile.name } }));
+            }
         }
-    };
+    }
+}, [peerFiles, setIsDownloading, setDownloadProgress]);
 
     const handleAddFiles = (newFiles) => {
         const filesToAdd = newFiles
@@ -905,34 +958,37 @@ export default function App() {
         setStatus(`Joining session ${code}...`);
     };
 
-    const handleDownloadAll = () => {
+    const handleDownloadAll = useCallback(() => {
         if (dcRef.current?.readyState === 'open' && peerFiles.length > 0) {
             setIsDownloading(true);
+            
+            downloadQueueRef.current = [...peerFiles];
+            
             setDownloadProgress(0);
             totalReceivedSizeRef.current = 0;
-            totalDownloadSizeRef.current = peerFiles.reduce((sum, file) => sum + file.size, 0);
-            peerFiles.forEach(file => {
-                dcRef.current.send(JSON.stringify({ type: 'request-file', payload: { name: file.name } }));
-            });
-        }
-    };
+            downloadedTotalSizeRef.current = 0;
 
-    const handleCancel = () => {
+            const firstFile = downloadQueueRef.current.shift();
+            if (firstFile) {
+                dcRef.current.send(JSON.stringify({ type: 'request-file', payload: { name: firstFile.name } }));
+            }
+        }
+    }, [peerFiles, setIsDownloading, setDownloadProgress]);
+
+    const handleCancel = useCallback(() => {
         if (isHost) {
             socketRef.current.emit("cancel-session", roomRef.current);
         }
         handleResetState(true);
-    };
+    }, [isHost, handleResetState]);
 
-    // Handler to open the preview modal
-    const handleFileClick = (file) => {
-        // If the file is from a peer and not yet downloaded, we can't preview it
+    const handleFileClick = useCallback((file) => {
         if (file.downloadedUrl || file.file) {
             openModal(file);
         } else {
             setToaster("File must be downloaded to view a preview.");
         }
-    };
+    }, [openModal, setToaster]);
 
     const renderView = () => {
         const props = { status, isConnected, myFiles, peerFiles, onAddFiles: handleAddFiles, onCancel: handleCancel, downloadProgress, onFileDelete: handleFileDelete, onFileDownload: handleFileDownload, onFileClick: handleFileClick, peerFileCount };
